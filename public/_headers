@@ -1,0 +1,6 @@
+# Cloudflare Pages 응답 헤더 설정
+# SharedArrayBuffer 활성화 → onnxruntime 멀티스레드 처리로 속도 향상
+# 주의: 이 헤더 적용 후 IMG.LY CDN 모델 로딩이 실패하면 아래 두 줄을 제거하세요 (기능엔 문제 없고 속도만 느려짐)
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
