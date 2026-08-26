@@ -160,7 +160,7 @@ export default function App() {
         <p>
           이 사이트는 AGPL-3.0 라이선스를 따릅니다 ·{' '}
           <a
-            href="https://github.com/YOUR_GITHUB/YOUR_REPO"
+            href="https://github.com/gwaweda/image-editor"
             className="underline hover:text-gray-600"
             target="_blank"
             rel="noreferrer"
