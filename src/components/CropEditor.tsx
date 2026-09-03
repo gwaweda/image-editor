@@ -1,7 +1,12 @@
-import { useState } from 'react';
-import Cropper from 'react-easy-crop';
+import { useRef, useState } from 'react';
+import ReactCrop, {
+  centerCrop,
+  makeAspectCrop,
+  type Crop as CropState,
+  type PixelCrop,
+} from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
 import { Check, X } from 'lucide-react';
-import type { Area } from '../lib/canvasUtils';
 import { cropToUrl } from '../lib/canvasUtils';
 
 type Props = {
@@ -12,7 +17,10 @@ type Props = {
   onCancel: () => void;
 };
 
-const ASPECTS: { label: string; value: number | 'original' }[] = [
+type AspectKey = 'free' | 'original' | number;
+
+const ASPECTS: { label: string; value: AspectKey }[] = [
+  { label: '자유', value: 'free' },
   { label: '원본 비율', value: 'original' },
   { label: '1:1', value: 1 },
   { label: '4:3', value: 4 / 3 },
@@ -27,20 +35,70 @@ export default function CropEditor({
   onDone,
   onCancel,
 }: Props) {
-  const [crop, setCrop] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(1);
-  const [aspectKey, setAspectKey] = useState<number | 'original'>('original');
-  const [areaPixels, setAreaPixels] = useState<Area | null>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [crop, setCrop] = useState<CropState>();
+  const [completed, setCompleted] = useState<PixelCrop>();
+  const [aspectKey, setAspectKey] = useState<AspectKey>('free');
   const [busy, setBusy] = useState(false);
 
-  const aspect =
-    aspectKey === 'original' ? naturalWidth / naturalHeight : aspectKey;
+  const resolveAspect = (key: AspectKey): number | undefined =>
+    key === 'free'
+      ? undefined
+      : key === 'original'
+        ? naturalWidth / naturalHeight
+        : key;
+
+  const aspect = resolveAspect(aspectKey);
+
+  /** 이미지 로드 시 기본 선택 영역(가운데 80%) */
+  const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const { width, height } = e.currentTarget;
+    setCrop(
+      centerCrop(
+        { unit: '%', x: 10, y: 10, width: 80, height: 80 },
+        width,
+        height
+      )
+    );
+  };
+
+  /** 비율 프리셋 변경 시 선택 영역을 해당 비율로 재설정 */
+  /** 비율 프리셋 변경 시 해당 비율로 가능한 최대 영역을 선택 */
+  const changeAspect = (key: AspectKey) => {
+    setAspectKey(key);
+    const img = imgRef.current;
+    if (!img) return;
+    if (key === 'original') {
+      // 원본 비율 = 이미지 전체
+      setCrop({ unit: '%', x: 0, y: 0, width: 100, height: 100 });
+      return;
+    }
+    const a = resolveAspect(key);
+    if (a) {
+      setCrop(
+        centerCrop(
+          makeAspectCrop({ unit: '%', width: 100 }, a, img.width, img.height),
+          img.width,
+          img.height
+        )
+      );
+    }
+  };
 
   const confirm = async () => {
-    if (!areaPixels) return;
+    const img = imgRef.current;
+    if (!img || !completed || completed.width < 1 || completed.height < 1) return;
     setBusy(true);
     try {
-      const url = await cropToUrl(imageUrl, areaPixels);
+      // 화면 표시 크기 → 원본 픽셀 좌표로 변환
+      const scaleX = img.naturalWidth / img.width;
+      const scaleY = img.naturalHeight / img.height;
+      const url = await cropToUrl(imageUrl, {
+        x: completed.x * scaleX,
+        y: completed.y * scaleY,
+        width: completed.width * scaleX,
+        height: completed.height * scaleY,
+      });
       onDone(url);
     } catch (e) {
       alert(e instanceof Error ? e.message : '자르기에 실패했습니다.');
@@ -52,23 +110,35 @@ export default function CropEditor({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-xl">
-        <div className="relative h-[400px] bg-gray-900">
-          <Cropper
-            image={imageUrl}
+        {/* 투명 배경이 보이도록 체커보드 배경 */}
+        <div className="flex items-center justify-center bg-gray-100 p-4">
+          <ReactCrop
             crop={crop}
-            zoom={zoom}
+            onChange={(c) => setCrop(c)}
+            onComplete={(c) => setCompleted(c)}
             aspect={aspect}
-            onCropChange={setCrop}
-            onZoomChange={setZoom}
-            onCropComplete={(_area, pixels) => setAreaPixels(pixels)}
-          />
+            keepSelection
+            className="checkerboard rounded-md border border-gray-400 shadow-sm"
+          >
+            <img
+              ref={imgRef}
+              src={imageUrl}
+              alt="자르기 대상 이미지"
+              onLoad={onImageLoad}
+              style={{
+                maxHeight: '60vh',
+                maxWidth: 'calc(min(42rem, 100vw - 2rem) - 2rem)',
+              }}
+              className="object-contain"
+            />
+          </ReactCrop>
         </div>
-        <div className="flex flex-col gap-4 p-4">
+        <div className="flex flex-col gap-4 border-t border-gray-100 p-4">
           <div className="flex flex-wrap gap-2">
             {ASPECTS.map((a) => (
               <button
                 key={a.label}
-                onClick={() => setAspectKey(a.value)}
+                onClick={() => changeAspect(a.value)}
                 className={
                   aspectKey === a.value
                     ? 'rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white'
@@ -79,18 +149,6 @@ export default function CropEditor({
               </button>
             ))}
           </div>
-          <label className="flex items-center gap-3 text-sm text-gray-600">
-            확대
-            <input
-              type="range"
-              min={1}
-              max={3}
-              step={0.05}
-              value={zoom}
-              onChange={(e) => setZoom(Number(e.target.value))}
-              className="flex-1 accent-indigo-600"
-            />
-          </label>
           <div className="flex justify-end gap-2">
             <button
               onClick={onCancel}
@@ -100,7 +158,7 @@ export default function CropEditor({
             </button>
             <button
               onClick={confirm}
-              disabled={busy || !areaPixels}
+              disabled={busy || !completed || completed.width < 1}
               className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
             >
               <Check className="h-4 w-4" /> {busy ? '적용 중…' : '자르기 적용'}
