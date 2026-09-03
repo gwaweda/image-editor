@@ -3,7 +3,7 @@
 서버 업로드 없이 브라우저에서 100% 로컬로 동작하는 이미지 배경 제거 도구.
 
 - **배경 제거**: [@imgly/background-removal](https://github.com/imgly/background-removal-js) (AGPL-3.0)
-- **자르기**: react-easy-crop
+- **자르기**: react-image-crop
 - **크기 조절 / 포맷 변환**: Canvas API (PNG · WebP · JPEG)
 - **스택**: Vite + React 18 + TypeScript + Tailwind CSS
 
